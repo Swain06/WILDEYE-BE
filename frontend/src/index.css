@@ -1,0 +1,154 @@
+@import "leaflet/dist/leaflet.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* WildEye Wildlife Conservation Platform Design System */
+
+@layer base {
+	:root {
+		--background: 210 40% 98%;
+		--foreground: 222 47% 11%;
+
+		--card: 0 0% 100%;
+		--card-foreground: 222 47% 11%;
+
+		--popover: 0 0% 100%;
+		--popover-foreground: 222 47% 11%;
+
+		--primary: 142 76% 36%;
+		--primary-foreground: 210 40% 98%;
+
+		--secondary: 210 40% 96.1%;
+		--secondary-foreground: 222 47% 11.2%;
+
+		--accent: 142 76% 36%;
+		--accent-foreground: 222 47% 11.2%;
+
+		--muted: 210 40% 96.1%;
+		--muted-foreground: 215.4 16.3% 46.9%;
+
+		--destructive: 0 84.2% 60.2%;
+		--destructive-foreground: 210 40% 98%;
+
+		--success: 142 76% 36%;
+		--success-foreground: 0 0% 100%;
+
+		--warning: 38 92% 50%;
+		--warning-foreground: 0 0% 100%;
+
+		--border: 214.3 31.8% 91.4%;
+		--input: 214.3 31.8% 91.4%;
+		--ring: 142 76% 36%;
+
+		--radius: 1rem;
+
+		--sidebar-background: 0 0% 98%;
+		--sidebar-foreground: 240 5.3% 26.1%;
+		--sidebar-primary: 240 5.9% 10%;
+		--sidebar-primary-foreground: 0 0% 98%;
+		--sidebar-accent: 240 4.8% 95.9%;
+		--sidebar-accent-foreground: 240 5.9% 10%;
+		--sidebar-border: 220 13% 91%;
+		--sidebar-ring: 217.2 91.2% 59.8%;
+	}
+
+	.dark {
+		--background: 222 47% 6%;
+		--foreground: 210 40% 98%;
+
+		--card: 222 47% 9%;
+		--card-foreground: 210 40% 98%;
+
+		--popover: 222 47% 9%;
+		--popover-foreground: 210 40% 98%;
+
+		--primary: 142 70% 50%;
+		--primary-foreground: 222 47% 6.7%;
+
+		--secondary: 222 47% 11.2%;
+		--secondary-foreground: 210 40% 98%;
+
+		--accent: 142 70% 50%;
+		--accent-foreground: 210 40% 98%;
+
+		--muted: 222 47% 11.2%;
+		--muted-foreground: 215 20.2% 65.1%;
+
+		--destructive: 0 62.8% 30.6%;
+		--destructive-foreground: 210 40% 98%;
+
+		--success: 142 70% 45%;
+		--success-foreground: 0 0% 100%;
+
+		--warning: 38 92% 55%;
+		--warning-foreground: 0 0% 0%;
+
+		--border: 222 47% 15%;
+		--input: 222 47% 15%;
+		--ring: 142 70% 50%;
+
+		--sidebar-background: 222 47% 8%;
+		--sidebar-foreground: 240 4.8% 95.9%;
+		--sidebar-primary: 224.3 76.3% 48%;
+		--sidebar-primary-foreground: 0 0% 100%;
+		--sidebar-accent: 222 47% 12%;
+		--sidebar-accent-foreground: 240 4.8% 95.9%;
+		--sidebar-border: 222 47% 15%;
+		--sidebar-ring: 217.2 91.2% 59.8%;
+	}
+}
+
+@layer base {
+	* {
+		@apply border-border;
+	}
+
+	body {
+		@apply bg-background text-foreground;
+		font-feature-settings: "rlig" 1, "calt" 1;
+	}
+}
+
+@layer utilities {
+	.glass {
+		@apply bg-background/60 backdrop-blur-md border border-white/20 dark:border-white/10;
+	}
+
+	.glass-dark {
+		@apply bg-black/40 backdrop-blur-md border border-white/10;
+	}
+
+	.text-gradient {
+		@apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-emerald-400;
+	}
+
+	.animate-fade-in {
+		animation: fadeIn 0.5s ease-out forwards;
+	}
+
+	.animate-slide-up {
+		animation: slideUp 0.6s ease-out forwards;
+	}
+
+	.animate-pulse-slow {
+		animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+	}
+
+	@keyframes fadeIn {
+		from { opacity: 0; }
+		to { opacity: 1; }
+	}
+
+	@keyframes slideUp {
+		from {
+			opacity: 0;
+			transform: translateY(20px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+}
