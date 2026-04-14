@@ -18,14 +18,29 @@ import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ResultsCard } from '@/components/shared/ResultsCard';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
 import { AlertBadge } from '@/components/shared/AlertBadge';
-import { predictFireRisk, predictFireRiskFromImage, listFireHotspots } from '@/lib/api';
-import { FileUpload } from '@/components/shared/FileUpload';
+import {
+  predictFireRisk,
+  predictFireRiskFromImage,
+  listFireHotspots,
+} from '@/lib/api';
+import { ImageInputToggle } from '@/components/ImageInputToggle';
 import { toast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 import type { FirePrediction, FireHotspot } from '@/types';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Area,
+  AreaChart,
+} from 'recharts';
 import { formatDistanceToNow } from 'date-fns';
 import L from 'leaflet';
 
@@ -85,7 +100,7 @@ function FireHotspotMap({ hotspots }: { hotspots: FireHotspot[] }) {
           }).addTo(mapInstanceRef.current);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     return () => {
       map.remove();
@@ -143,6 +158,8 @@ export function FirePrediction() {
   const [hotspotsLoading, setHotspotsLoading] = useState(true);
   const [riskFilter, setRiskFilter] = useState<string>('All');
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+
 
   const fetchHotspots = async () => {
     try {
@@ -158,6 +175,13 @@ export function FirePrediction() {
   useEffect(() => {
     fetchHotspots();
   }, []);
+
+  const handleFileSelect = (file: File, previewUrl: string) => {
+    setImageFile(file);
+    setImagePreview(previewUrl);
+    setResult(null);
+  };
+
 
   const handlePredict = async () => {
     setIsProcessing(true);
@@ -408,11 +432,11 @@ export function FirePrediction() {
                 </Button>
 
                 <div className="border-t pt-6 mt-6">
-                  <p className="text-sm font-medium mb-2">Or predict from image (CNN model)</p>
-                  <FileUpload
-                    onFileSelect={setImageFile}
-                    label="Upload forest/satellite image"
-                    description="Uses WildfirePrediction.pth"
+                  <p className="text-sm font-medium mb-3">Or predict from image (CNN model)</p>
+                  <ImageInputToggle
+                    onFileSelected={handleFileSelect}
+                    label="Forest Image"
+                    className="mb-3"
                   />
                   <Button
                     className="w-full mt-2"
@@ -438,8 +462,8 @@ export function FirePrediction() {
                     result.riskLevel === 'Critical' || result.riskLevel === 'High'
                       ? 'danger'
                       : result.riskLevel === 'Medium'
-                      ? 'warning'
-                      : 'success'
+                        ? 'warning'
+                        : 'success'
                   }
                 >
                   <div className="space-y-6">
@@ -464,15 +488,14 @@ export function FirePrediction() {
                     <div className="space-y-2">
                       <div className="h-4 w-full rounded-full bg-muted overflow-hidden">
                         <div
-                          className={`h-full rounded-full transition-all ${
-                            result.probability > 0.7
-                              ? 'bg-destructive'
-                              : result.probability > 0.5
+                          className={`h-full rounded-full transition-all ${result.probability > 0.7
+                            ? 'bg-destructive'
+                            : result.probability > 0.5
                               ? 'bg-accent'
                               : result.probability > 0.3
-                              ? 'bg-warning'
-                              : 'bg-success'
-                          }`}
+                                ? 'bg-warning'
+                                : 'bg-success'
+                            }`}
                           style={{ width: `${result.probability * 100}%` }}
                         />
                       </div>
@@ -620,13 +643,12 @@ export function FirePrediction() {
               {filteredHotspots.map((hotspot) => (
                 <Card
                   key={hotspot.id}
-                  className={`transition-all ${
-                    hotspot.riskLevel === 'Critical'
-                      ? 'border-destructive/50 bg-destructive/5'
-                      : hotspot.riskLevel === 'High'
+                  className={`transition-all ${hotspot.riskLevel === 'Critical'
+                    ? 'border-destructive/50 bg-destructive/5'
+                    : hotspot.riskLevel === 'High'
                       ? 'border-accent/50 bg-accent/5'
                       : ''
-                  }`}
+                    }`}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between">
@@ -649,6 +671,7 @@ export function FirePrediction() {
               ))}
             </div>
           </div>
+
         </TabsContent>
       </Tabs>
     </div>

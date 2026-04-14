@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Shield,
   AlertTriangle,
@@ -14,6 +14,10 @@ import {
   Save,
   Mail,
   Phone,
+  ChevronDown,
+  Play,
+  StopCircle,
+  Camera,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,14 +26,25 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FileUpload } from '@/components/shared/FileUpload';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { ImageInputToggle } from '@/components/ImageInputToggle';
+import { ModeSelector, type DetectionMode } from '@/components/ModeSelector';
 import { ResultsCard } from '@/components/shared/ResultsCard';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
 import { AlertBadge } from '@/components/shared/AlertBadge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { cn } from '@/lib/utils';
 import {
   createPoachingAnalysis,
   listPoachingAlerts,
   updatePoachingAlertStatus,
+  detectPoachingBase64,
   type PoachingStatus,
 } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
@@ -62,6 +77,16 @@ export function PoachingDetection() {
   const [emailEnabled, setEmailEnabled] = useState<boolean>(() => {
     try { return localStorage.getItem('wildeye_email_alerts') !== 'false'; } catch { return true; }
   });
+  const [captureMode, setCaptureMode] = useState<DetectionMode>('normal');
+
+  // Surveillance State
+  const [isSurveilling, setIsSurveilling] = useState(false);
+  const [surveillanceInterval, setSurveillanceInterval] = useState(5); // seconds
+  const [surveillanceResults, setSurveillanceResults] = useState<PoachingAlert[]>([]);
+  const surveillanceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const videoPreviewRef = useRef<HTMLVideoElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+
 
   const toggleTelegram = () => setTelegramEnabled(prev => {
     const next = !prev;
@@ -87,13 +112,12 @@ export function PoachingDetection() {
       .finally(() => setAlertsLoading(false));
   }, []);
 
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = (file: File, previewUrl: string) => {
     setSelectedFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
+    setImagePreview(previewUrl);
     setResult(null);
   };
+
 
   const handleAnalyze = async () => {
     if (!selectedFile) {
@@ -111,21 +135,28 @@ export function PoachingDetection() {
         lon: longitude !== '' ? parseFloat(longitude) : undefined,
         enable_telegram: telegramEnabled,
         enable_email: emailEnabled,
+        mode: captureMode,
       });
-      const withPreview: PoachingAlert = { ...analysisResult, imageUrl: imagePreview || undefined };
-      setResult(withPreview);
-      setAlerts((prev) => [withPreview, ...prev]);
+
+      // After successful detection, if mode was enabled, show the enhanced image in result
+      const displayResult: PoachingAlert = {
+        ...analysisResult,
+        imageUrl: analysisResult.imageUrl || imagePreview || undefined,
+      };
+
+      setResult(displayResult);
+      setAlerts((prev) => [displayResult, ...prev]);
 
       if (analysisResult.isSuspicious) {
         toast({
           title: 'Suspicious Activity Detected!',
-          description: `Confidence: ${analysisResult.confidence.toFixed(1)}% - Alert sent`,
+          description: `Confidence: ${analysisResult.confidence.toFixed(1)}% - Alert sent ${captureMode !== 'normal' ? 'using ' + captureMode + ' enhancement' : ''}`,
           variant: 'destructive',
         });
       } else {
         toast({
           title: 'Analysis Complete',
-          description: 'No suspicious activity detected',
+          description: `No suspicious activity detected ${captureMode !== 'normal' ? 'even with ' + captureMode + ' enhancement' : ''}`,
         });
       }
     } catch (err) {
@@ -133,6 +164,72 @@ export function PoachingDetection() {
       toast({ title: 'Analysis Failed', description: message, variant: 'destructive' });
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  // Surveillance Controls
+  useEffect(() => {
+    return () => {
+      if (surveillanceTimerRef.current) clearInterval(surveillanceTimerRef.current);
+      if (stream) stream.getTracks().forEach(track => track.stop());
+    };
+  }, [stream]);
+
+  const toggleSurveillance = async () => {
+    if (isSurveilling) {
+      setIsSurveilling(false);
+      if (surveillanceTimerRef.current) clearInterval(surveillanceTimerRef.current);
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        setStream(null);
+      }
+      toast({ title: 'Surveillance Stopped', description: 'Real-time monitoring deactivated' });
+    } else {
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        setStream(newStream);
+        if (videoPreviewRef.current) videoPreviewRef.current.srcObject = newStream;
+        setIsSurveilling(true);
+
+        const timer = setInterval(async () => {
+          await runSurveillanceCapture();
+        }, surveillanceInterval * 1000);
+
+        surveillanceTimerRef.current = timer;
+        toast({ title: 'Surveillance Active', description: `Monitoring every ${surveillanceInterval} seconds` });
+      } catch (err) {
+        toast({ title: 'Camera Error', description: 'Could not access camera for surveillance', variant: 'destructive' });
+      }
+    }
+  };
+
+  const runSurveillanceCapture = async () => {
+    if (!videoPreviewRef.current) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = videoPreviewRef.current.videoWidth;
+    canvas.height = videoPreviewRef.current.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(videoPreviewRef.current, 0, 0);
+    const base64 = canvas.toDataURL('image/jpeg', 0.8);
+
+    try {
+      const res = await detectPoachingBase64({
+        image: base64,
+        mode: captureMode,
+        location_name: locationName.trim() || "Live Surveillance",
+        lat: latitude !== '' ? parseFloat(latitude) : undefined,
+        lon: longitude !== '' ? parseFloat(longitude) : undefined,
+      });
+
+      setSurveillanceResults(prev => [res, ...prev].slice(0, 10));
+      if (res.isSuspicious) {
+        setAlerts(prev => [res, ...prev]);
+        toast({ title: '🚨 SUSPICIOUS ACTIVITY', description: 'Poaching threat detected in live feed!', variant: 'destructive' });
+      }
+    } catch (err) {
+      console.error("Surveillance capture failed", err);
     }
   };
 
@@ -250,377 +347,591 @@ export function PoachingDetection() {
       )}
 
       <div className="grid gap-8 lg:grid-cols-2">
-        {/* Upload Section */}
+        {/* Detection Pane */}
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Upload Surveillance Image</CardTitle>
-              <CardDescription>
-                Upload camera trap or drone footage for poaching detection
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <FileUpload
-                onFileSelect={handleFileSelect}
-                label="Upload Surveillance Image"
-                description="Camera trap, drone footage, or patrol images"
-              />
-              <div className="space-y-2">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-muted-foreground" />
-                  Location name (optional)
-                </label>
-                <Input
-                  placeholder="e.g. South Perimeter Gate"
-                  value={locationName}
-                  onChange={(e) => setLocationName(e.target.value)}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Latitude (optional)</label>
-                  <Input
-                    type="number"
-                    placeholder="e.g. 26.02"
-                    value={latitude}
-                    onChange={(e) => setLatitude(e.target.value)}
-                    step="any"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Longitude (optional)</label>
-                  <Input
-                    type="number"
-                    placeholder="e.g. 76.50"
-                    value={longitude}
-                    onChange={(e) => setLongitude(e.target.value)}
-                    step="any"
-                  />
-                </div>
-              </div>
-              {/* Telegram toggle */}
-              <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-                <div className="space-y-0.5">
-                  <label className="text-sm font-medium flex items-center gap-2 cursor-pointer" htmlFor="tg-toggle">
-                    📨 Telegram Alerts
-                  </label>
-                  <p className="text-xs text-muted-foreground">Send alert to Telegram on high-confidence detection</p>
-                </div>
-                <button
-                  id="tg-toggle"
-                  role="switch"
-                  aria-checked={telegramEnabled}
-                  onClick={toggleTelegram}
-                  style={{
-                    width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
-                    background: telegramEnabled ? '#22c55e' : '#e2e8f0',
-                    position: 'relative', transition: 'background 0.2s',
-                  }}
-                >
-                  <span style={{
-                    position: 'absolute', top: 3, left: telegramEnabled ? 23 : 3,
-                    width: 18, height: 18, borderRadius: '50%', background: 'white',
-                    transition: 'left 0.2s', boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
-                  }} />
-                </button>
-              </div>
-              {/* Email Alerts toggle */}
-              <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-                <div className="space-y-0.5">
-                  <label className="text-sm font-medium flex items-center gap-2 cursor-pointer" htmlFor="email-toggle">
-                    📧 Email Alerts
-                  </label>
-                  <p className="text-xs text-muted-foreground">Send Gmail alert on high-confidence detection</p>
-                </div>
-                <button
-                  id="email-toggle"
-                  role="switch"
-                  aria-checked={emailEnabled}
-                  onClick={toggleEmail}
-                  style={{
-                    width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
-                    background: emailEnabled ? '#22c55e' : '#e2e8f0',
-                    position: 'relative', transition: 'background 0.2s',
-                  }}
-                >
-                  <span style={{
-                    position: 'absolute', top: 3, left: emailEnabled ? 23 : 3,
-                    width: 18, height: 18, borderRadius: '50%', background: 'white',
-                    transition: 'left 0.2s', boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
-                  }} />
-                </button>
-              </div>
-              <Button
-                className="w-full"
-                size="lg"
-                onClick={handleAnalyze}
-                disabled={!selectedFile || isProcessing}
-              >
-                {isProcessing ? (
-                  <>
-                    <LoadingSpinner size="sm" />
-                    <span className="ml-2">Analyzing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Shield className="mr-2 h-5 w-5" />
-                    Analyze for Poaching
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
+          <Tabs defaultValue="upload" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="upload" className="flex items-center gap-2">
+                <ChevronDown className="h-4 w-4 rotate-180" />
+                Single Image Analysis
+              </TabsTrigger>
+              <TabsTrigger value="surveillance" className="flex items-center gap-2">
+                <Eye className="h-4 w-4" />
+                Live Surveillance
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Results Section */}
-          {result && (
-            <ResultsCard
-              title="Analysis Results"
-              icon={Shield}
-              variant={result.isSuspicious ? 'danger' : 'success'}
-            >
-              <div className="space-y-4">
-                {/* Preview */}
-                {imagePreview && (
-                  <div className="relative rounded-lg overflow-hidden">
-                    <img
-                      src={imagePreview}
-                      alt="Analysis result"
-                      className="w-full object-contain"
+            <TabsContent value="upload" className="mt-4 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Upload Surveillance Image</CardTitle>
+                  <CardDescription>
+                    Upload camera trap or drone footage for poaching detection
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <ImageInputToggle
+                    onFileSelected={handleFileSelect}
+                    label="Surveillance Image"
+                    className="mb-2"
+                  />
+
+                  <ModeSelector
+                    value={captureMode}
+                    onChange={setCaptureMode}
+                    className="py-2"
+                  />
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                      Location name (optional)
+                    </label>
+                    <Input
+                      placeholder="e.g. South Perimeter Gate"
+                      value={locationName}
+                      onChange={(e) => setLocationName(e.target.value)}
                     />
-                    {result.isSuspicious && (
-                      <div className="absolute top-2 right-2">
-                        <AlertBadge status="High" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Latitude (optional)</label>
+                      <Input
+                        type="number"
+                        placeholder="e.g. 26.02"
+                        value={latitude}
+                        onChange={(e) => setLatitude(e.target.value)}
+                        step="any"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Longitude (optional)</label>
+                      <Input
+                        type="number"
+                        placeholder="e.g. 76.50"
+                        value={longitude}
+                        onChange={(e) => setLongitude(e.target.value)}
+                        step="any"
+                      />
+                    </div>
+                  </div>
+                  {/* Telegram toggle */}
+                  <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+                    <div className="space-y-0.5">
+                      <label className="text-sm font-medium flex items-center gap-2 cursor-pointer" htmlFor="tg-toggle">
+                        📨 Telegram Alerts
+                      </label>
+                      <p className="text-xs text-muted-foreground">Send alert to Telegram on high-confidence detection</p>
+                    </div>
+                    <button
+                      id="tg-toggle"
+                      role="switch"
+                      aria-checked={telegramEnabled}
+                      onClick={toggleTelegram}
+                      style={{
+                        width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+                        background: telegramEnabled ? '#22c55e' : '#e2e8f0',
+                        position: 'relative', transition: 'background 0.2s',
+                      }}
+                    >
+                      <span style={{
+                        position: 'absolute', top: 3, left: telegramEnabled ? 23 : 3,
+                        width: 18, height: 18, borderRadius: '50%', background: 'white',
+                        transition: 'left 0.2s', boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+                      }} />
+                    </button>
+                  </div>
+                  {/* Email Alerts toggle */}
+                  <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+                    <div className="space-y-0.5">
+                      <label className="text-sm font-medium flex items-center gap-2 cursor-pointer" htmlFor="email-toggle">
+                        📧 Email Alerts
+                      </label>
+                      <p className="text-xs text-muted-foreground">Send Gmail alert on high-confidence detection</p>
+                    </div>
+                    <button
+                      id="email-toggle"
+                      role="switch"
+                      aria-checked={emailEnabled}
+                      onClick={toggleEmail}
+                      style={{
+                        width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+                        background: emailEnabled ? '#22c55e' : '#e2e8f0',
+                        position: 'relative', transition: 'background 0.2s',
+                      }}
+                    >
+                      <span style={{
+                        position: 'absolute', top: 3, left: emailEnabled ? 23 : 3,
+                        width: 18, height: 18, borderRadius: '50%', background: 'white',
+                        transition: 'left 0.2s', boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+                      }} />
+                    </button>
+                  </div>
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    onClick={handleAnalyze}
+                    disabled={!selectedFile || isProcessing}
+                  >
+                    {isProcessing ? (
+                      <>
+                        <LoadingSpinner size="sm" />
+                        <span className="ml-2">
+                          {captureMode !== 'normal' ? `Enhancing & Analyzing...` : 'Analyzing...'}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Shield className="mr-2 h-5 w-5" />
+                        Analyze for Poaching
+                      </>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="surveillance" className="mt-4 space-y-6">
+              <Card className="overflow-hidden">
+                <CardHeader className="bg-slate-900/50">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <span className={cn("h-2.5 w-2.5 rounded-full", isSurveilling ? "bg-red-500 animate-pulse" : "bg-slate-500")} />
+                        🚨 Live Surveillance Mode
+                      </CardTitle>
+                      <CardDescription>Continuous monitoring with auto-capture</CardDescription>
+                    </div>
+                    <Button
+                      variant={isSurveilling ? "destructive" : "default"}
+                      onClick={toggleSurveillance}
+                      className="gap-2"
+                    >
+                      {isSurveilling ? <><StopCircle className="h-4 w-4" /> Stop</> : <><Play className="h-4 w-4" /> Start</>}
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="relative aspect-video bg-black">
+                    {isSurveilling ? (
+                      <video
+                        ref={videoPreviewRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full flex-col items-center justify-center text-slate-500 gap-3">
+                        <Camera className="h-12 w-12 opacity-20" />
+                        <p className="text-sm">Surveillance inactive. Click Start to begin.</p>
+                      </div>
+                    )}
+
+                    {isSurveilling && (
+                      <div className="absolute top-4 right-4 z-10">
+                        <div className="flex flex-col gap-2 scale-90">
+                          {captureMode === 'thermal' && (
+                            <div className="bg-orange-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg border border-white/20">
+                              🌡️ THERMAL
+                            </div>
+                          )}
+                          {captureMode === 'night' && (
+                            <div className="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg border border-white/20">
+                              🌙 NIGHT
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
-                )}
 
-                {/* Status */}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-lg bg-muted/50 p-4 text-center">
-                    <p className="text-sm text-muted-foreground">Suspicious Activity</p>
-                    <p
-                      className={`text-2xl font-bold ${result.isSuspicious ? 'text-destructive' : 'text-success'
-                        }`}
-                    >
-                      {result.isSuspicious ? 'YES' : 'NO'}
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-muted/50 p-4 text-center">
-                    <p className="text-sm text-muted-foreground">Confidence</p>
-                    <p className="text-2xl font-bold">{result.confidence.toFixed(1)}%</p>
-                  </div>
-                </div>
+                  <div className="p-4 space-y-4 border-t">
+                    <ModeSelector
+                      value={captureMode}
+                      onChange={setCaptureMode}
+                    />
 
-                {/* Alert Status */}
-                <div className="flex items-center justify-between rounded-lg bg-muted/50 p-4">
-                  <span className="text-sm font-medium">Alert Status</span>
-                  <span
-                    className={`flex items-center gap-2 text-sm font-semibold ${result.alertSent ? 'text-destructive' : 'text-muted-foreground'
-                      }`}
-                  >
-                    {result.alertSent ? (
-                      <>
-                        <Bell className="h-4 w-4" />
-                        Alert Sent
-                      </>
-                    ) : (
-                      <>
-                        <Check className="h-4 w-4" />
-                        No Alert
-                      </>
-                    )}
-                  </span>
-                </div>
-
-                {/* Detected Objects */}
-                {result.detectedObjects.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Detected Objects:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {result.detectedObjects.map((obj) => (
-                        <span
-                          key={obj}
-                          className="rounded-full bg-destructive/20 px-3 py-1 text-sm font-medium text-destructive"
-                        >
-                          {obj}
-                        </span>
-                      ))}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm font-medium">
+                        <Label className="flex items-center gap-2">
+                          <Clock className="h-4 w-4" />
+                          Capture Interval
+                        </Label>
+                        <span>{surveillanceInterval}s</span>
+                      </div>
+                      <Slider
+                        value={[surveillanceInterval]}
+                        onValueChange={([v]) => setSurveillanceInterval(v)}
+                        min={2}
+                        max={30}
+                        step={1}
+                        disabled={isSurveilling}
+                      />
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+
+              {surveillanceResults.length > 0 && (
+                <Card>
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Recent Captures</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3">
+                    <div className="grid grid-cols-5 gap-2">
+                      {surveillanceResults.map((r, i) => (
+                        <TooltipProvider key={r.id + i}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className={cn(
+                                "group relative aspect-square rounded-md overflow-hidden border-2 cursor-help",
+                                r.isSuspicious ? "border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.2)]" : "border-transparent"
+                              )}>
+                                <img src={r.processedImageUrl || r.imageUrl} alt="frame" className="h-full w-full object-cover transition-transform group-hover:scale-110" />
+                                {r.mode !== 'normal' && (
+                                  <div className="absolute bottom-0.5 right-0.5 rounded bg-black/60 px-1 text-[8px] text-white">
+                                    {r.mode === 'thermal' ? '🌡️' : '🌙'}
+                                  </div>
+                                )}
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="p-0 border-none shadow-2xl">
+                              <div className="flex overflow-hidden rounded-lg bg-slate-950 border border-slate-800">
+                                <div className="p-2 space-y-1">
+                                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Original</p>
+                                  <img src={r.imageUrl} alt="original" className="h-32 w-48 object-cover rounded border border-white/10" />
+                                </div>
+                                {r.processedImageUrl && (
+                                  <div className="p-2 space-y-1 bg-slate-900/50">
+                                    <p className="text-[10px] font-bold text-primary uppercase tracking-tighter">Enhanced ({r.mode})</p>
+                                    <img src={r.processedImageUrl} alt="enhanced" className="h-32 w-48 object-cover rounded border border-primary/20" />
+                                  </div>
+                                )}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          </Tabs>
+        </div>
+
+
+        {/* Results Section */}
+        {result && (
+          <ResultsCard
+            title="Analysis Results"
+            icon={Shield}
+            variant={result.isSuspicious ? 'danger' : 'success'}
+          >
+            <div className="space-y-4">
+              {/* Preview */}
+              {imagePreview && (
+                <div className="space-y-4">
+                  {result.processedImageUrl && result.mode !== 'normal' ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Original Capture</span>
+                          <div className="relative rounded-lg overflow-hidden border border-muted-foreground/10 aspect-[4/3]">
+                            <img
+                              src={result.imageUrl}
+                              alt="Original"
+                              className="h-full w-full object-cover"
+                            />
+                          </div>
+                          <p className="text-center text-[10px] text-muted-foreground italic">Standard Input</p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-bold text-primary uppercase tracking-wider">
+                            {result.mode === 'thermal' ? '🌡️ Thermal Enhanced' : '🌙 Night Enhanced'}
+                          </span>
+                          <div className="relative rounded-lg overflow-hidden border-2 border-primary/20 aspect-[4/3] shadow-inner">
+                            <img
+                              src={result.processedImageUrl}
+                              alt="Enhanced"
+                              className="h-full w-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-primary/5 pointer-events-none" />
+                          </div>
+                          <p className="text-center text-[10px] text-primary font-medium italic">processed output</p>
+                        </div>
+                      </div>
+                      <div className="relative">
+                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background border-2 border-border p-1.5 rounded-full z-10">
+                          <Search className="h-3 w-3 text-muted-foreground" />
+                        </div>
+                        <div className="h-px w-full bg-border" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative rounded-lg overflow-hidden">
+                      <img
+                        src={result.imageUrl || imagePreview}
+                        alt="Analysis result"
+                        className="w-full object-contain"
+                      />
+                      {result.isSuspicious && (
+                        <div className="absolute top-2 right-2">
+                          <AlertBadge status="High" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Status Badges */}
+              <div className="flex gap-2">
+                {result.mode === 'thermal' && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/15 px-2.5 py-0.5 text-xs font-semibold text-orange-700 dark:text-orange-400">
+                    🌡️ Thermal Mode
+                  </span>
                 )}
+                {result.mode === 'night' && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 px-2.5 py-0.5 text-xs font-semibold text-blue-700 dark:text-blue-400">
+                    🌙 Night Mode
+                  </span>
+                )}
+              </div>
 
-                {/* Location */}
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <MapPin className="h-4 w-4" />
-                  {result.location.name}
+              {/* Status */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-lg bg-muted/50 p-4 text-center">
+                  <p className="text-sm text-muted-foreground">Suspicious Activity</p>
+                  <p
+                    className={`text-2xl font-bold ${result.isSuspicious ? 'text-destructive' : 'text-success'
+                      }`}
+                  >
+                    {result.isSuspicious ? 'YES' : 'NO'}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-muted/50 p-4 text-center">
+                  <p className="text-sm text-muted-foreground">Confidence</p>
+                  <p className="text-2xl font-bold">{result.confidence.toFixed(1)}%</p>
                 </div>
               </div>
-            </ResultsCard>
-          )}
-        </div>
 
-        {/* Alerts Table */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Alert History</CardTitle>
-                  <CardDescription>
-                    {filteredAlerts.length} alerts recorded
-                  </CardDescription>
-                </div>
+              {/* Alert Status */}
+              <div className="flex items-center justify-between rounded-lg bg-muted/50 p-4">
+                <span className="text-sm font-medium">Alert Status</span>
+                <span
+                  className={`flex items-center gap-2 text-sm font-semibold ${result.alertSent ? 'text-destructive' : 'text-muted-foreground'
+                    }`}
+                >
+                  {result.alertSent ? (
+                    <>
+                      <Bell className="h-4 w-4" />
+                      Alert Sent
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4" />
+                      No Alert
+                    </>
+                  )}
+                </span>
               </div>
-            </CardHeader>
-            <CardContent>
-              {/* Filters */}
-              <div className="mb-4 flex gap-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by ID or location..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-[150px]">
-                    <Filter className="mr-2 h-4 w-4" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {status}
-                      </SelectItem>
+
+              {/* Detected Objects */}
+              {result.detectedObjects.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Detected Objects:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {result.detectedObjects.map((obj) => (
+                      <span
+                        key={obj}
+                        className="rounded-full bg-destructive/20 px-3 py-1 text-sm font-medium text-destructive"
+                      >
+                        {obj}
+                      </span>
                     ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  </div>
+                </div>
+              )}
 
-              {/* Table */}
-              <div className="max-h-[500px] overflow-auto rounded-lg border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Alert ID</TableHead>
-                      <TableHead>Confidence</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {alertsLoading ? (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                          Loading alerts…
-                        </TableCell>
-                      </TableRow>
-                    ) : filteredAlerts.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                          No alerts yet. Upload an image and run analysis.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredAlerts.map((alert) => (
-                        <TableRow key={alert.id}>
-                          <TableCell>
-                            <div className="font-medium">{alert.id}</div>
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <MapPin className="h-3 w-3" />
-                              {alert.location.name}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <span
-                              className={`font-medium ${alert.confidence >= 80
-                                ? 'text-destructive'
-                                : alert.confidence >= 60
-                                  ? 'text-warning'
-                                  : 'text-muted-foreground'
-                                }`}
-                            >
-                              {alert.confidence.toFixed(1)}%
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <AlertBadge status={alert.status} />
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                              <Clock className="h-3 w-3" />
-                              {formatDistanceToNow(new Date(alert.timestamp), { addSuffix: true })}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              {alert.status === 'Pending' && (
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    onClick={() => updateAlertStatus(alert.id, 'Reviewed')}
-                                    title="Mark as Reviewed"
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-destructive"
-                                    onClick={() => updateAlertStatus(alert.id, 'Confirmed')}
-                                    title="Confirm Alert"
-                                  >
-                                    <Check className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    onClick={() => updateAlertStatus(alert.id, 'False Positive')}
-                                    title="Mark as False Positive"
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </Button>
-                                </>
-                              )}
-                              {alert.status === 'Reviewed' && (
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-destructive"
-                                    onClick={() => updateAlertStatus(alert.id, 'Confirmed')}
-                                    title="Confirm Alert"
-                                  >
-                                    <Check className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    onClick={() => updateAlertStatus(alert.id, 'False Positive')}
-                                    title="Mark as False Positive"
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )))}
-                  </TableBody>
-                </Table>
+              {/* Location */}
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <MapPin className="h-4 w-4" />
+                {result.location.name}
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </ResultsCard>
+        )}
+      </div>
+
+      {/* Alerts Table */}
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Alert History</CardTitle>
+                <CardDescription>
+                  {filteredAlerts.length} alerts recorded
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {/* Filters */}
+            <div className="mb-4 flex gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search by ID or location..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <Filter className="mr-2 h-4 w-4" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {status}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Table */}
+            <div className="max-h-[500px] overflow-auto rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Alert ID</TableHead>
+                    <TableHead>Mode/Source</TableHead>
+                    <TableHead>Confidence</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {alertsLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                        Loading alerts…
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredAlerts.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                        No alerts yet. Upload an image and run analysis.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredAlerts.map((alert) => (
+                      <TableRow key={alert.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setResult(alert)}>
+                        <TableCell>
+                          <div className="font-medium font-mono text-xs">{alert.id.slice(0, 8)}...</div>
+                          <div className="flex items-center gap-1 text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">
+                            <MapPin className="h-3 w-3" />
+                            {alert.location.name}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5">
+                            {alert.mode === 'thermal' && <span className="text-orange-500" title="Thermal Enhanced">🌡️</span>}
+                            {alert.mode === 'night' && <span className="text-blue-500" title="Night Vision Enhanced">🌙</span>}
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase">{alert.mode || 'normal'}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span
+                            className={`font-medium ${alert.confidence >= 80
+                              ? 'text-destructive'
+                              : alert.confidence >= 60
+                                ? 'text-warning'
+                                : 'text-muted-foreground'
+                              }`}
+                          >
+                            {alert.confidence.toFixed(1)}%
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <AlertBadge status={alert.status} />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            {formatDistanceToNow(new Date(alert.timestamp), { addSuffix: true })}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            {alert.status === 'Pending' && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => updateAlertStatus(alert.id, 'Reviewed')}
+                                  title="Mark as Reviewed"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive"
+                                  onClick={() => updateAlertStatus(alert.id, 'Confirmed')}
+                                  title="Confirm Alert"
+                                >
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => updateAlertStatus(alert.id, 'False Positive')}
+                                  title="Mark as False Positive"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+                            {alert.status === 'Reviewed' && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive"
+                                  onClick={() => updateAlertStatus(alert.id, 'Confirmed')}
+                                  title="Confirm Alert"
+                                >
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => updateAlertStatus(alert.id, 'False Positive')}
+                                  title="Mark as False Positive"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

@@ -103,6 +103,8 @@ export interface PoachingAlert {
 	timestamp: string;
 	location: { lat: number; lon: number; name: string };
 	imageUrl?: string;
+	processedImageUrl?: string;
+	mode?: "normal" | "thermal" | "night";
 }
 
 export interface ListPoachingAlertsResponse {
@@ -129,7 +131,7 @@ export async function listPoachingAlerts(params?: {
 	return getJson<ListPoachingAlertsResponse>(url);
 }
 
-/** POST /api/poaching/analyze - upload image and run poaching detection */
+/** POST /api/poaching/detect - upload image and run poaching detection */
 export async function createPoachingAnalysis(form: {
 	image: File;
 	location_name?: string | null;
@@ -138,6 +140,7 @@ export async function createPoachingAnalysis(form: {
 	confidence?: number | null;
 	enable_telegram?: boolean;
 	enable_email?: boolean;
+	mode?: string;
 }): Promise<PoachingAlert> {
 	const body = new FormData();
 	body.append("image", form.image);
@@ -150,8 +153,9 @@ export async function createPoachingAnalysis(form: {
 		body.append("confidence", String(form.confidence));
 	body.append("enable_telegram", form.enable_telegram ? "true" : "false");
 	body.append("enable_email", form.enable_email !== false ? "true" : "false");
+	if (form.mode) body.append("mode", form.mode);
 
-	const res = await fetch(`${API_BASE}/api/poaching/analyze`, {
+	const res = await fetch(`${API_BASE}/api/poaching/detect`, {
 		method: "POST",
 		body,
 	});
@@ -161,6 +165,27 @@ export async function createPoachingAnalysis(form: {
 	}
 	return res.json();
 }
+
+/** POST /api/poaching/detect-base64 - continuous surveillance mode */
+export async function detectPoachingBase64(form: {
+	image: string; // base64
+	mode: string;
+	location_name?: string;
+	lat?: number;
+	lon?: number;
+}): Promise<PoachingAlert> {
+	const res = await fetch(`${API_BASE}/api/poaching/detect-base64`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(form),
+	});
+	if (!res.ok) {
+		const text = await res.text();
+		throw new Error(text || `HTTP ${res.status}`);
+	}
+	return res.json();
+}
+
 
 /** PATCH /api/poaching/alerts/{id} - update alert status */
 export async function updatePoachingAlertStatus(
@@ -297,6 +322,7 @@ export async function predictHabitatSuitability(params: {
 	return res.json();
 }
 
+
 /** POST /api/fire/predict-image - predict wildfire risk from image (CNN) */
 export async function predictFireRiskFromImage(form: {
 	image: File;
@@ -322,6 +348,7 @@ export async function predictFireRiskFromImage(form: {
 	}
 	return res.json();
 }
+
 
 // --- Map Data ---
 

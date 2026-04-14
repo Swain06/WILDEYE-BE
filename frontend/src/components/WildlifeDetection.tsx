@@ -22,10 +22,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { ImageInputToggle } from '@/components/ImageInputToggle';
+import { ModeSelector, type DetectionMode } from '@/components/ModeSelector';
 import { createDetections, listDetections, predictMovement, explainDetection, ensembleDetect, type MovementPredictionResponse, type GradCAMResponse, type EnsembleResult } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import type { Detection, WildlifeDetectionResult } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 export function WildlifeDetection() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -55,7 +58,8 @@ export function WildlifeDetection() {
   const [explainData, setExplainData] = useState<GradCAMResponse | null>(null);
   const [explainError, setExplainError] = useState<string | null>(null);
   const [explainItem, setExplainItem] = useState<Detection | null>(null);
-  const [detectionMode, setDetectionMode] = useState<'normal' | 'thermal' | 'night'>('normal');
+  const [detectionMode, setDetectionMode] = useState<DetectionMode>('normal');
+
 
   // Species from model (Roboflow trail-camera-animal-detection): unique from history, "All" first
   const speciesOptions = [
@@ -70,11 +74,9 @@ export function WildlifeDetection() {
       .finally(() => setHistoryLoading(false));
   }, []);
 
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = (file: File, previewUrl: string) => {
     setSelectedFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
+    setImagePreview(previewUrl);
     setResult(null);
   };
 
@@ -136,6 +138,7 @@ export function WildlifeDetection() {
       setIsProcessing(false);
     }
   };
+
 
   const exportToCSV = () => {
     const headers = ['ID', 'Species', 'Confidence', 'Timestamp', 'Location'];
@@ -238,10 +241,10 @@ export function WildlifeDetection() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <FileUpload
-                onFileSelect={handleFileSelect}
-                label="Upload Camera Trap Image"
-                description="Drag and drop or click to upload (Open Images V7 — Tiger, Lion, Leopard, etc.)"
+              <ImageInputToggle
+                onFileSelected={handleFileSelect}
+                label="Detection Image"
+                className="mb-2"
               />
               <div className="space-y-2">
                 <label className="text-sm font-medium flex items-center gap-2">
@@ -277,36 +280,10 @@ export function WildlifeDetection() {
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <label className="text-sm font-medium flex items-center justify-between">
-                  Image Mode
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="max-w-xs">Select "Thermal" or "Night Vision" for low-light or IR footage to improve detection accuracy via preprocessing.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </label>
-                <Tabs defaultValue="normal" value={detectionMode} onValueChange={(v) => setDetectionMode(v as any)}>
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="normal">Normal</TabsTrigger>
-                    <TabsTrigger value="thermal">Thermal / IR</TabsTrigger>
-                    <TabsTrigger value="night">Night Vision</TabsTrigger>
-                  </TabsList>
-                </Tabs>
-
-                {detectionMode !== 'normal' && (
-                  <div className="flex items-center gap-2 rounded-lg bg-primary/5 px-3 py-2 text-xs text-primary font-medium border border-primary/10">
-                    <Info className="h-3.5 w-3.5" />
-                    Image will be preprocessed to enhance detection accuracy
-                  </div>
-                )}
-              </div>
-
+              <ModeSelector
+                value={detectionMode}
+                onChange={setDetectionMode}
+              />
               <div className="flex items-center justify-between rounded-lg border border-dashed px-4 py-3 bg-muted/30">
                 <div className="space-y-0.5">
                   <label htmlFor="ensemble-toggle" className="text-sm font-medium cursor-pointer select-none flex items-center gap-2">
@@ -351,6 +328,7 @@ export function WildlifeDetection() {
               </Button>
             </CardContent>
           </Card>
+
 
           {result && !ensembleResult && (
             <ResultsCard title="Detection Results" icon={PawPrint} variant="success">
@@ -799,6 +777,6 @@ export function WildlifeDetection() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }

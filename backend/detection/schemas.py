@@ -42,6 +42,8 @@ class PoachingAlert(BaseModel):
     timestamp: str  # ISO 8601
     location: Location
     imageUrl: Optional[str] = None
+    processedImageUrl: Optional[str] = None
+    mode: Optional[str] = "normal"
 
 
 FireRiskLevel = Literal["Low", "Medium", "High", "Critical"]
@@ -70,6 +72,8 @@ class HabitatPrediction(BaseModel):
     factors: dict[str, str]  # temperature, rainfall, elevation, forestCover, ndvi
     species: str
     region: str
+
+
 
 
 class MigrationPoint(BaseModel):

@@ -1,5 +1,7 @@
 """Wildlife detection API: upload image, run YOLO, list/export history from MongoDB."""
 
+import base64
+import binascii
 import csv
 import io
 from datetime import datetime
@@ -8,6 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pydantic import BaseModel
 
 from detection.cloudinary_uploader import upload_image_bytes
 from detection import run_detection
@@ -152,6 +155,7 @@ async def create_ensemble_detections(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Ensemble detection failed: {exc}")
     return result
+
 
 
 @router.get("", response_model=dict)

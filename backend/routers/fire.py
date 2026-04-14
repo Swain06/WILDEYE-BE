@@ -1,5 +1,7 @@
 """Fire risk prediction API: from dataset model (xlsx/CSV-trained RF) or from image (CNN .pth)."""
 
+import base64
+import binascii
 import logging
 from datetime import datetime, timezone
 from typing import Annotated, Optional
@@ -7,6 +9,7 @@ from typing import Annotated, Optional
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pydantic import BaseModel
 
 from config import settings
 from detection.cloudinary_uploader import upload_image_bytes
@@ -316,3 +319,4 @@ async def predict_fire_from_image(
     )
     await _save_hotspot(db, result)
     return result
+

@@ -1,9 +1,9 @@
 """Habitat suitability prediction API (RandomForest from Colab untitled49)."""
 
 from typing import Annotated
-
-from fastapi import APIRouter, Form
-
+from fastapi import APIRouter, Form, File, UploadFile
+import base64
+from datetime import datetime
 from detection.schemas import HabitatPrediction
 from detection.habitat_predictor import (
     is_model_available,

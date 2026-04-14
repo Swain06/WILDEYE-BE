@@ -1,18 +1,42 @@
 import { useState, useEffect, useRef } from 'react';
-import { Map, Thermometer, CloudRain, Mountain, Trees, Leaf, Target, MapPin } from 'lucide-react';
+import {
+  Map,
+  Thermometer,
+  CloudRain,
+  Mountain,
+  Trees,
+  Leaf,
+  Target,
+  MapPin,
+  ImageIcon,
+} from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ResultsCard } from '@/components/shared/ResultsCard';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
 import { AlertBadge } from '@/components/shared/AlertBadge';
-import { predictHabitatSuitability } from '@/lib/api';
+import {
+  predictHabitatSuitability,
+} from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 import type { HabitatPrediction } from '@/types';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+  PieChart,
+  Pie,
+} from 'recharts';
 import L from 'leaflet';
 
 const SPECIES_LIST = ['Tiger', 'Elephant', 'Lion', 'Deer', 'Bear', 'Wolf', 'Fox', 'Hare', 'Boar'];
@@ -93,7 +117,7 @@ function HabitatSuitabilityMap({
           }).addTo(mapInstanceRef.current);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     return () => {
       map.remove();
@@ -153,6 +177,7 @@ export function HabitatSuitability() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<HabitatPrediction | null>(null);
 
+
   const handlePredict = async () => {
     setIsProcessing(true);
     try {
@@ -177,6 +202,7 @@ export function HabitatSuitability() {
       setIsProcessing(false);
     }
   };
+
 
   const getFactorScore = (factor: string): number => {
     switch (factor) {
@@ -207,12 +233,12 @@ export function HabitatSuitability() {
 
   const chartData = result
     ? [
-        { name: 'Temperature', score: getFactorScore(result.factors.temperature), label: result.factors.temperature },
-        { name: 'Rainfall', score: getFactorScore(result.factors.rainfall), label: result.factors.rainfall },
-        { name: 'Elevation', score: getFactorScore(result.factors.elevation), label: result.factors.elevation },
-        { name: 'Forest', score: getFactorScore(result.factors.forestCover), label: result.factors.forestCover },
-        { name: 'NDVI', score: getFactorScore(result.factors.ndvi), label: result.factors.ndvi },
-      ]
+      { name: 'Temperature', score: getFactorScore(result.factors.temperature), label: result.factors.temperature },
+      { name: 'Rainfall', score: getFactorScore(result.factors.rainfall), label: result.factors.rainfall },
+      { name: 'Elevation', score: getFactorScore(result.factors.elevation), label: result.factors.elevation },
+      { name: 'Forest', score: getFactorScore(result.factors.forestCover), label: result.factors.forestCover },
+      { name: 'NDVI', score: getFactorScore(result.factors.ndvi), label: result.factors.ndvi },
+    ]
     : [];
 
   return (
@@ -228,7 +254,7 @@ export function HabitatSuitability() {
       </div>
 
       <Tabs defaultValue="predict" className="space-y-6">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="grid w-full max-w-lg grid-cols-2">
           <TabsTrigger value="predict">Predict Suitability</TabsTrigger>
           <TabsTrigger value="maps">View Maps</TabsTrigger>
         </TabsList>
@@ -391,21 +417,20 @@ export function HabitatSuitability() {
                     result.suitability === 'High'
                       ? 'success'
                       : result.suitability === 'Medium'
-                      ? 'warning'
-                      : 'danger'
+                        ? 'warning'
+                        : 'danger'
                   }
                 >
                   <div className="space-y-6">
                     <div className="text-center">
                       <p className="text-sm text-muted-foreground mb-2">Habitat Suitability</p>
                       <div
-                        className={`inline-flex items-center justify-center rounded-full px-6 py-3 text-2xl font-bold ${
-                          result.suitability === 'High'
-                            ? 'bg-success/20 text-success'
-                            : result.suitability === 'Medium'
+                        className={`inline-flex items-center justify-center rounded-full px-6 py-3 text-2xl font-bold ${result.suitability === 'High'
+                          ? 'bg-success/20 text-success'
+                          : result.suitability === 'Medium'
                             ? 'bg-warning/20 text-warning'
                             : 'bg-destructive/20 text-destructive'
-                        }`}
+                          }`}
                       >
                         {result.suitability}
                       </div>
@@ -451,7 +476,6 @@ export function HabitatSuitability() {
             )}
           </div>
         </TabsContent>
-
         <TabsContent value="maps" className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-3">
             <Card className="lg:col-span-2">
@@ -529,6 +553,6 @@ export function HabitatSuitability() {
           </div>
         </TabsContent>
       </Tabs>
-    </div>
+    </div >
   );
 }

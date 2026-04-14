@@ -56,6 +56,8 @@ export interface PoachingAlert {
   timestamp: string;
   location: { lat: number; lon: number; name: string };
   imageUrl?: string;
+  processedImageUrl?: string;
+  mode?: "normal" | "thermal" | "night";
 }
 
 export interface AlertConfig {
