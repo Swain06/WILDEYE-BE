@@ -79,13 +79,6 @@ export function PoachingDetection() {
   });
   const [captureMode, setCaptureMode] = useState<DetectionMode>('normal');
 
-  // Surveillance State
-  const [isSurveilling, setIsSurveilling] = useState(false);
-  const [surveillanceInterval, setSurveillanceInterval] = useState(5); // seconds
-  const [surveillanceResults, setSurveillanceResults] = useState<PoachingAlert[]>([]);
-  const surveillanceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const videoPreviewRef = useRef<HTMLVideoElement>(null);
-  const [stream, setStream] = useState<MediaStream | null>(null);
 
 
   const toggleTelegram = () => setTelegramEnabled(prev => {
@@ -167,71 +160,6 @@ export function PoachingDetection() {
     }
   };
 
-  // Surveillance Controls
-  useEffect(() => {
-    return () => {
-      if (surveillanceTimerRef.current) clearInterval(surveillanceTimerRef.current);
-      if (stream) stream.getTracks().forEach(track => track.stop());
-    };
-  }, [stream]);
-
-  const toggleSurveillance = async () => {
-    if (isSurveilling) {
-      setIsSurveilling(false);
-      if (surveillanceTimerRef.current) clearInterval(surveillanceTimerRef.current);
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-        setStream(null);
-      }
-      toast({ title: 'Surveillance Stopped', description: 'Real-time monitoring deactivated' });
-    } else {
-      try {
-        const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        setStream(newStream);
-        if (videoPreviewRef.current) videoPreviewRef.current.srcObject = newStream;
-        setIsSurveilling(true);
-
-        const timer = setInterval(async () => {
-          await runSurveillanceCapture();
-        }, surveillanceInterval * 1000);
-
-        surveillanceTimerRef.current = timer;
-        toast({ title: 'Surveillance Active', description: `Monitoring every ${surveillanceInterval} seconds` });
-      } catch (err) {
-        toast({ title: 'Camera Error', description: 'Could not access camera for surveillance', variant: 'destructive' });
-      }
-    }
-  };
-
-  const runSurveillanceCapture = async () => {
-    if (!videoPreviewRef.current) return;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = videoPreviewRef.current.videoWidth;
-    canvas.height = videoPreviewRef.current.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(videoPreviewRef.current, 0, 0);
-    const base64 = canvas.toDataURL('image/jpeg', 0.8);
-
-    try {
-      const res = await detectPoachingBase64({
-        image: base64,
-        mode: captureMode,
-        location_name: locationName.trim() || "Live Surveillance",
-        lat: latitude !== '' ? parseFloat(latitude) : undefined,
-        lon: longitude !== '' ? parseFloat(longitude) : undefined,
-      });
-
-      setSurveillanceResults(prev => [res, ...prev].slice(0, 10));
-      if (res.isSuspicious) {
-        setAlerts(prev => [res, ...prev]);
-        toast({ title: '🚨 SUSPICIOUS ACTIVITY', description: 'Poaching threat detected in live feed!', variant: 'destructive' });
-      }
-    } catch (err) {
-      console.error("Surveillance capture failed", err);
-    }
-  };
 
   const updateAlertStatus = (alertId: string, newStatus: PoachingStatus) => {
     updatePoachingAlertStatus(alertId, newStatus)
@@ -350,18 +278,7 @@ export function PoachingDetection() {
         {/* Detection Pane */}
         <div className="space-y-6">
           <Tabs defaultValue="upload" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="upload" className="flex items-center gap-2">
-                <ChevronDown className="h-4 w-4 rotate-180" />
-                Single Image Analysis
-              </TabsTrigger>
-              <TabsTrigger value="surveillance" className="flex items-center gap-2">
-                <Eye className="h-4 w-4" />
-                Live Surveillance
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="upload" className="mt-4 space-y-6">
+            <TabsContent value="upload" className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle>Upload Surveillance Image</CardTitle>
@@ -490,133 +407,7 @@ export function PoachingDetection() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="surveillance" className="mt-4 space-y-6">
-              <Card className="overflow-hidden">
-                <CardHeader className="bg-slate-900/50">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        <span className={cn("h-2.5 w-2.5 rounded-full", isSurveilling ? "bg-red-500 animate-pulse" : "bg-slate-500")} />
-                        🚨 Live Surveillance Mode
-                      </CardTitle>
-                      <CardDescription>Continuous monitoring with auto-capture</CardDescription>
-                    </div>
-                    <Button
-                      variant={isSurveilling ? "destructive" : "default"}
-                      onClick={toggleSurveillance}
-                      className="gap-2"
-                    >
-                      {isSurveilling ? <><StopCircle className="h-4 w-4" /> Stop</> : <><Play className="h-4 w-4" /> Start</>}
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="relative aspect-video bg-black">
-                    {isSurveilling ? (
-                      <video
-                        ref={videoPreviewRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full flex-col items-center justify-center text-slate-500 gap-3">
-                        <Camera className="h-12 w-12 opacity-20" />
-                        <p className="text-sm">Surveillance inactive. Click Start to begin.</p>
-                      </div>
-                    )}
 
-                    {isSurveilling && (
-                      <div className="absolute top-4 right-4 z-10">
-                        <div className="flex flex-col gap-2 scale-90">
-                          {captureMode === 'thermal' && (
-                            <div className="bg-orange-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg border border-white/20">
-                              🌡️ THERMAL
-                            </div>
-                          )}
-                          {captureMode === 'night' && (
-                            <div className="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg border border-white/20">
-                              🌙 NIGHT
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-4 space-y-4 border-t">
-                    <ModeSelector
-                      value={captureMode}
-                      onChange={setCaptureMode}
-                    />
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm font-medium">
-                        <Label className="flex items-center gap-2">
-                          <Clock className="h-4 w-4" />
-                          Capture Interval
-                        </Label>
-                        <span>{surveillanceInterval}s</span>
-                      </div>
-                      <Slider
-                        value={[surveillanceInterval]}
-                        onValueChange={([v]) => setSurveillanceInterval(v)}
-                        min={2}
-                        max={30}
-                        step={1}
-                        disabled={isSurveilling}
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {surveillanceResults.length > 0 && (
-                <Card>
-                  <CardHeader className="py-3">
-                    <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Recent Captures</CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-3 pb-3">
-                    <div className="grid grid-cols-5 gap-2">
-                      {surveillanceResults.map((r, i) => (
-                        <TooltipProvider key={r.id + i}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className={cn(
-                                "group relative aspect-square rounded-md overflow-hidden border-2 cursor-help",
-                                r.isSuspicious ? "border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.2)]" : "border-transparent"
-                              )}>
-                                <img src={r.processedImageUrl || r.imageUrl} alt="frame" className="h-full w-full object-cover transition-transform group-hover:scale-110" />
-                                {r.mode !== 'normal' && (
-                                  <div className="absolute bottom-0.5 right-0.5 rounded bg-black/60 px-1 text-[8px] text-white">
-                                    {r.mode === 'thermal' ? '🌡️' : '🌙'}
-                                  </div>
-                                )}
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="p-0 border-none shadow-2xl">
-                              <div className="flex overflow-hidden rounded-lg bg-slate-950 border border-slate-800">
-                                <div className="p-2 space-y-1">
-                                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Original</p>
-                                  <img src={r.imageUrl} alt="original" className="h-32 w-48 object-cover rounded border border-white/10" />
-                                </div>
-                                {r.processedImageUrl && (
-                                  <div className="p-2 space-y-1 bg-slate-900/50">
-                                    <p className="text-[10px] font-bold text-primary uppercase tracking-tighter">Enhanced ({r.mode})</p>
-                                    <img src={r.processedImageUrl} alt="enhanced" className="h-32 w-48 object-cover rounded border border-primary/20" />
-                                  </div>
-                                )}
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
           </Tabs>
         </div>
 

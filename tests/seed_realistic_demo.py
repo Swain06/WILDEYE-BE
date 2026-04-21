@@ -112,9 +112,18 @@ async def seed_realistic_demo():
     dry_locations = [
         {"name": "Demo-Thar Desert (W)", "lat": 26.27, "lon": 73.02},
         {"name": "Demo-Central Plateau (C)", "lat": 23.25, "lon": 77.41},
-        {"name": "Demo-Dry Forest (NW)", "lat": 27.0, "lon": 76.0}
+        {"name": "Demo-Dry Forest (NW)", "lat": 27.0, "lon": 76.0},
+        # Maharashtra spots
+        {"name": "Demo-Tadoba (MH)", "lat": 20.23, "lon": 79.33},
+        {"name": "Demo-Sahyadri TR (MH)", "lat": 17.37, "lon": 73.74},
+        {"name": "Demo-Melghat TR (MH)", "lat": 21.43, "lon": 77.22},
+        # South sites
+        {"name": "Demo-Bandipur (S)", "lat": 11.66, "lon": 76.62},
+        {"name": "Demo-Nagarhole (S)", "lat": 12.04, "lon": 76.13},
+        {"name": "Demo-Periyar (S)", "lat": 9.47, "lon": 77.17},
+        {"name": "Demo-Sathyamangalam (S)", "lat": 11.50, "lon": 77.20}
     ]
-    for _ in range(20):
+    for _ in range(45):
         loc = random.choice(dry_locations)
         lat = loc["lat"] + random.uniform(-0.5, 0.5)
         lon = loc["lon"] + random.uniform(-0.5, 0.5)

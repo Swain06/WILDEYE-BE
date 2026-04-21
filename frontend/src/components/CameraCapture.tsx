@@ -33,6 +33,16 @@ export function CameraCapture({ onCapture, onClose, aspectRatio = "landscape" }:
         };
     }, []);
 
+    // Assign stream to video element whenever stream changes
+    useEffect(() => {
+        if (videoRef.current && stream) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.play().catch(err => {
+                console.warn("Video play error:", err);
+            });
+        }
+    }, [stream]);
+
     const enumerateDevices = async () => {
         try {
             const allDevices = await navigator.mediaDevices.enumerateDevices();
@@ -55,20 +65,23 @@ export function CameraCapture({ onCapture, onClose, aspectRatio = "landscape" }:
         }
 
         try {
+            // Detect if on a mobile device to use facingMode: 'environment'
+            const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
             const constraints: MediaStreamConstraints = {
                 video: {
                     deviceId: deviceId ? { exact: deviceId } : undefined,
-                    facingMode: deviceId ? undefined : 'environment',
+                    // Only use 'environment' on mobile — on desktop it can select
+                    // an IR/depth camera which outputs grayscale
+                    facingMode: (!deviceId && isMobile) ? 'environment' : undefined,
                     width: { ideal: 1280 },
                     height: { ideal: 720 }
                 }
             };
 
             const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+            // Set stream in state; the useEffect will assign it to the video element
             setStream(newStream);
-            if (videoRef.current) {
-                videoRef.current.srcObject = newStream;
-            }
             setState("live_preview");
 
             // Update current device ID if not set
@@ -197,15 +210,17 @@ export function CameraCapture({ onCapture, onClose, aspectRatio = "landscape" }:
                         </div>
                     )}
 
-                    {state === "live_preview" && (
-                        <video
-                            ref={videoRef}
-                            autoPlay
-                            playsInline
-                            muted
-                            className={`w-full h-full object-cover ${aspectRatio === 'square' ? 'aspect-square' : ''}`}
-                        />
-                    )}
+                    {/* Video element is always mounted so videoRef is always valid */}
+                    <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        onCanPlay={() => videoRef.current?.play().catch(() => {})}
+                        className={`w-full h-full object-cover ${
+                            aspectRatio === 'square' ? 'aspect-square' : ''
+                        } ${state === 'live_preview' ? '' : 'hidden'}`}
+                    />
 
                     {state === "captured" && capturedImage && (
                         <img
