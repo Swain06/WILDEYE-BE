@@ -1,5 +1,6 @@
 import os
 import asyncio
+from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()  # Load .env before anything else reads os.getenv()
 
@@ -7,10 +8,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from config import settings
 from routers import analytics, chat, detections, fire, habitat, map as map_router, models, news, poaching, satellite
+
+# Path to the compiled React frontend (built by Docker stage 1)
+FRONTEND_DIST = Path("/app/frontend/dist")
 
 
 @asynccontextmanager
@@ -44,17 +50,25 @@ async def refresh_firms_data_task():
 
 app = FastAPI(title="WildEye API", version="0.1.0", lifespan=lifespan)
 
-# Bug 3 fix: read allowed origins from settings (which loads from .env)
-# Split by comma and strip any whitespace around URLs
-allowed_origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Read allowed origins from settings; allow all when running on HF Spaces
+raw_origins = settings.ALLOWED_ORIGINS.strip()
+if raw_origins == "*":
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    allowed_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 app.include_router(detections.router)
@@ -69,11 +83,30 @@ app.include_router(models.router)
 app.include_router(satellite.router)
 
 
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
-
-
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# ── Serve the compiled React SPA ───────────────────────────────────────────────
+# Mount static assets (js/css/images) only when the dist folder exists
+if FRONTEND_DIST.exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+
+    @app.get("/")
+    async def serve_index():
+        return FileResponse(FRONTEND_DIST / "index.html")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Catch-all: serve static file if it exists, otherwise serve index.html
+        so that React Router's client-side routes work correctly."""
+        target = FRONTEND_DIST / full_path
+        if target.exists() and target.is_file():
+            return FileResponse(target)
+        return FileResponse(FRONTEND_DIST / "index.html")
+else:
+    # Fallback when running locally without a frontend build
+    @app.get("/")
+    async def root():
+        return {"message": "WildEye API is running. Frontend not found at /app/frontend/dist."}

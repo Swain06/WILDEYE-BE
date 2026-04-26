@@ -12,3 +12,5 @@ joblib
 cloudinary
 httpx
 grad-cam
+python-dotenv
+aiofiles

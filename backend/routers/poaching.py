@@ -206,7 +206,7 @@ async def analyze_poaching(
     """Upload an image, run poaching detection (YOLO), save alert to MongoDB, return result.
     If mode is 'thermal' or 'night', applies preprocessing before detection.
     """
-    from backend.detection.preprocessing import preprocess_thermal, preprocess_nightvision
+    from detection.preprocessing import preprocess_thermal, preprocess_nightvision
 
     location = Location(
         lat=lat if lat is not None else 0.0,
@@ -304,7 +304,7 @@ async def analyze_poaching_base64(
     request: Request,
 ):
     """Analyze base64 image for poaching (used by live surveillance)."""
-    from backend.detection.preprocessing import preprocess_thermal, preprocess_nightvision
+    from detection.preprocessing import preprocess_thermal, preprocess_nightvision
     data = await request.json()
     base64_str = data.get("image")
     mode = data.get("mode", "normal")

@@ -20,7 +20,7 @@ import torch.nn as nn
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL_PATH = Path("trained_models/WildfirePrediction.pth")
+DEFAULT_MODEL_PATH = Path("trained_models/WildfirePrediction.pt")
 
 _model = None
 _transform = None

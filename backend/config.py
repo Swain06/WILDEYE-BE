@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Model paths (under backend/ or absolute)
     WILDLIFE_MODEL_PATH: str = "trained_models/WildlifeDetection.pt"
     POACHING_MODEL_PATH: str = "trained_models/PoachingDetection.pt"
-    WILDFIRE_MODEL_PATH: str = "trained_models/WildfirePrediction.pth"
+    WILDFIRE_MODEL_PATH: str = "trained_models/WildfirePrediction.pt"
     FIRE_MODEL_PATH: str = "trained_models/fire_model.joblib"
     FIRE_SCALER_PATH: str = "trained_models/fire_scaler.joblib"
     HABITAT_MODEL_PATH: str = "trained_models/HabitatSuitability.pt"
