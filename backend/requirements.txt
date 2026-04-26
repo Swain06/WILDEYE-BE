@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+ultralytics
+motor
+python-multipart
+pydantic-settings
+torch
+torchvision
+Pillow
+scikit-learn
+joblib
+cloudinary
+httpx
+grad-cam
+python-dotenv
+aiofiles

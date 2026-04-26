@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+
+# HF push helper — contains token, never commit
+hf_push.py
+
+# Environment secrets — NEVER commit real .env files
+.env
+backend/.env
+frontend/.env
+
+# Build artifacts
+dist/
+build/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Test cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Note: trained_models/ and *.pt / *.pth / *.joblib are intentionally NOT
+# ignored so they are pushed to HF Spaces via Git LFS (handled by .gitattributes)
