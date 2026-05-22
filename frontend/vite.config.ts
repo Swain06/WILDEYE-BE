@@ -16,6 +16,8 @@ export default defineConfig(({ mode }) => ({
       '/news': 'http://localhost:8000',
       '/chat': 'http://localhost:8000',
       '/analytics': 'http://localhost:8000',
+      '/map': 'http://localhost:8000',
+      '/health': 'http://localhost:8000',
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),

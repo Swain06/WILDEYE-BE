@@ -20,18 +20,26 @@ _cache = {
 async def get_cached_fires():
     now = datetime.now(timezone.utc)
     refresh_interval = settings.FIRMS_REFRESH_INTERVAL
-    
-    if _cache["last_updated"] is None or (now - _cache["last_updated"]) > timedelta(minutes=refresh_interval):
-        fires = await fetch_active_fires(days=1)
+
+    cache_stale = (
+        _cache["last_updated"] is None
+        or (now - _cache["last_updated"]) > timedelta(minutes=refresh_interval)
+    )
+    # Also force a refresh when the cache has 0 fires — the startup fetch may
+    # have raced against the FIRMS API before today's data was available.
+    cache_empty = len(_cache["fires"]) == 0
+
+    if cache_stale or cache_empty:
+        fires = await fetch_active_fires(days=2)
         # Classify severity and add placeholder carbon estimate
         for fire in fires:
             fire["severity"] = classify_fire_severity(fire["frp"], fire["brightness"], fire["confidence"])
             # Placeholder Carbon Estimate: 1.6 * FRP (very rough proxy)
             fire["carbon_emissions"] = round(fire["frp"] * 1.6, 2)
-        
+
         _cache["fires"] = fires
         _cache["last_updated"] = now
-        
+
     return _cache["fires"], _cache["last_updated"]
 
 @router.get("/fires")
@@ -94,7 +102,9 @@ async def get_fires_history(days: int = Query(7, ge=1, le=7)):
             "count": item["count"],
             "avg_frp": round(item["total_frp"] / item["count"], 2) if item["count"] > 0 else 0
         })
-        
+
+    return {"history": history}
+
 
 class CarbonEstimateRequest(BaseModel):
     burned_area_ha: float = 0

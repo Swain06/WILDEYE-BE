@@ -10,16 +10,17 @@ BBOX = settings.FIRMS_BBOX
 
 FIRMS_SOURCES = ["VIIRS_SNPP_NRT", "MODIS_NRT"]
 
-async def fetch_active_fires(days: int = 1) -> list[dict]:
+async def fetch_active_fires(days: int = 2) -> list[dict]:
     """
     Fetch active fire detections from NASA FIRMS for the last N days.
     Returns a list of fire points with lat, lng, brightness, confidence, satellite.
+    Default is 2 days to avoid the UTC-midnight gap where day=1 returns no data yet.
     """
     if not NASA_FIRMS_KEY:
         return []
 
     fires = []
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=45) as client:
         for source in FIRMS_SOURCES:
             url = f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{NASA_FIRMS_KEY}/{source}/{BBOX}/{days}"
             try:

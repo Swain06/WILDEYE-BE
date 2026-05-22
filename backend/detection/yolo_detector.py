@@ -77,36 +77,41 @@ def run_detection(
 
     raw_candidates = []
 
-    # 1. Run COCO (Best for fundamental animals)
-    coco = get_yolo_model(COCO_MODEL)
-    res_coco = coco.predict(source=source, conf=confidence_threshold, imgsz=imgsz, verbose=False)[0]
-    if res_coco.boxes is not None:
-        for i, cid in enumerate(res_coco.boxes.cls.cpu().numpy().astype(int)):
-            if cid in COCO_ANIMAL_IDS:
-                raw_candidates.append({
-                    "species": res_coco.names.get(cid, "Animal").capitalize(),
-                    "conf": float(res_coco.boxes.conf[i]),
-                    "bbox": tuple(map(float, res_coco.boxes.xyxy[i])),
-                    "priority": 2 # COCO is very robust
-                })
+    low_memory = os.environ.get("LOW_MEMORY_MODE", "false").lower() == "true"
+    custom_path = model_path or os.environ.get("WILDLIFE_MODEL_PATH")
+    has_custom = custom_path and Path(custom_path).exists()
 
-    # 2. Run OIV7 (Detailed species: Tiger, Leopard, Elephant, etc.)
-    oiv7 = get_yolo_model(OIV7_MODEL)
-    res_oiv7 = oiv7.predict(source=source, conf=confidence_threshold, imgsz=imgsz, verbose=False)[0]
-    if res_oiv7.boxes is not None:
-        for i, cid in enumerate(res_oiv7.boxes.cls.cpu().numpy().astype(int)):
-            name = res_oiv7.names.get(cid, "").lower()
-            if cid in OIV7_ANIMAL_IDS and name not in ["animal", "animals"]:
-                raw_candidates.append({
-                    "species": name.capitalize(),
-                    "conf": float(res_oiv7.boxes.conf[i]),
-                    "bbox": tuple(map(float, res_oiv7.boxes.xyxy[i])),
-                    "priority": 3 # OIV7 is very specific
-                })
+    # 1. Run COCO (Best for fundamental animals) - Skip if in low-memory mode and custom model is present
+    if not low_memory or not has_custom:
+        coco = get_yolo_model(COCO_MODEL)
+        res_coco = coco.predict(source=source, conf=confidence_threshold, imgsz=imgsz, verbose=False)[0]
+        if res_coco.boxes is not None:
+            for i, cid in enumerate(res_coco.boxes.cls.cpu().numpy().astype(int)):
+                if cid in COCO_ANIMAL_IDS:
+                    raw_candidates.append({
+                        "species": res_coco.names.get(cid, "Animal").capitalize(),
+                        "conf": float(res_coco.boxes.conf[i]),
+                        "bbox": tuple(map(float, res_coco.boxes.xyxy[i])),
+                        "priority": 2 # COCO is very robust
+                    })
+
+    # 2. Run OIV7 (Detailed species: Tiger, Leopard, Elephant, etc.) - Skip entirely in low-memory mode
+    if not low_memory:
+        oiv7 = get_yolo_model(OIV7_MODEL)
+        res_oiv7 = oiv7.predict(source=source, conf=confidence_threshold, imgsz=imgsz, verbose=False)[0]
+        if res_oiv7.boxes is not None:
+            for i, cid in enumerate(res_oiv7.boxes.cls.cpu().numpy().astype(int)):
+                name = res_oiv7.names.get(cid, "").lower()
+                if cid in OIV7_ANIMAL_IDS and name not in ["animal", "animals"]:
+                    raw_candidates.append({
+                        "species": name.capitalize(),
+                        "conf": float(res_oiv7.boxes.conf[i]),
+                        "bbox": tuple(map(float, res_oiv7.boxes.xyxy[i])),
+                        "priority": 3 # OIV7 is very specific
+                    })
 
     # 3. Run Custom Model (if any)
-    custom_path = model_path or os.environ.get("WILDLIFE_MODEL_PATH")
-    if custom_path and Path(custom_path).exists():
+    if has_custom:
         custom = get_yolo_model(custom_path)
         res_custom = custom.predict(source=source, conf=confidence_threshold, imgsz=imgsz, verbose=False)[0]
         if res_custom.boxes is not None:
